@@ -142,6 +142,7 @@ for env in env_check_list:
         print(instance)
         env_url=form_url(str(instance["domain"]), str(instance["instance_name"]), str(instance["uri_prefix"]), str(instance["uri_suffix"]))
         print(env_url)
+        env_health["URL"]=env_url
         oh_filter = str(instance["overall_health_filter"])
         print(oh_filter)
         driver = get_chrome_driver(env_url)
