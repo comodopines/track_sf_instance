@@ -4,6 +4,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import time
 import datetime
+import pprint
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -13,6 +14,7 @@ from selenium.common.exceptions import TimeoutException
 import traceback
 
 env_check_list = ["DEV", "STG", "PROD"]
+env_check_list = ["DEV"]
 instances = { "DEV" :
                     {
                       "domain" : "https://status.salesforce.com",
@@ -43,10 +45,12 @@ instances = { "DEV" :
 
             }
 
+def format_key(key_str):
+    return key_str.lower().strip().replace(' ', '_')
 
 
 def initialize_chrome():
-    DRIVER_PATH='/Users/govindsinghrawat/python_scripts/ark/drivers/chromedriver'
+    DRIVER_PATH='/Users/username/python_scripts/ark/drivers/chromedriver'
     chrome_options = Options()
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
@@ -100,7 +104,7 @@ def get_overall_health(driver, tag="div.sc-iueMJG.gNlGiH", delimiter=","):
 
     return row
 
-       
+
 def get_services_health(driver, tag="div.sc-gGuQiZ.fAXLLe", delimiter=","):
     service_status=[]
     ok_health="HEALTHY"
@@ -132,6 +136,32 @@ def get_services_health(driver, tag="div.sc-gGuQiZ.fAXLLe", delimiter=","):
     return service_status
 
 
+
+#https://stackoverflow.com/a/26306203/14885821
+def get_instance_details(driver, tag="div", attr="[data-testid='instance-info']", delimiter=","):
+    wrapped_div = driver.find_elements_by_css_selector(tag+attr)
+    print(tag+attr)
+    print(len(wrapped_div))
+    instance_details = {}
+    vstr="Version" 
+    rstr="Region"
+    mstr="Maintenance Window"
+    for divsi, divs in enumerate(wrapped_div):
+        #print(divsi, type(divs), divs.get_attribute("data-testid"),"xx")
+       int_div=divs.find_elements_by_css_selector('div')
+       for idi, id in enumerate(int_div):
+           if vstr in id.text:
+               instance_details[format_key(vstr)]=id.text.replace(vstr, '').replace('\n', '').strip()
+           elif rstr in id.text:
+               instance_details[format_key(rstr)]=id.text.replace(rstr, '').replace('\n', '').strip()
+           elif mstr in id.text:
+               instance_details[format_key(mstr)]=id.text.replace(mstr, '').replace('Help', '').replace('\n', ' ').strip()
+           else:
+               continue
+
+    return instance_details
+                
+
 health_check = {}
 delimiter=","
 delay=10
@@ -141,10 +171,10 @@ for env in env_check_list:
         instance = instances[env]
         print(instance)
         env_url=form_url(str(instance["domain"]), str(instance["instance_name"]), str(instance["uri_prefix"]), str(instance["uri_suffix"]))
-        print(env_url)
-        env_health["URL"]=env_url
+        #print(env_url)
+        env_health[format_key("URL")]=env_url
         oh_filter = str(instance["overall_health_filter"])
-        print(oh_filter)
+        #print(oh_filter)
         driver = get_chrome_driver(env_url)
         try:
             wait = WebDriverWait(driver, delay)
@@ -152,23 +182,33 @@ for env in env_check_list:
         except TimeoutException:
             print(env, ": Page Load Timeout")
             continue
-        koverall,val = get_overall_health(driver,oh_filter,delimiter ).split(delimiter)
-        env_health[koverall] = val
         
-        print(oh_filter)
+        koverall,val = get_overall_health(driver,oh_filter,delimiter ).split(delimiter)
+        
+        env_health[format_key(koverall)] = val
+        
+        #print(oh_filter)
         #for sh_filter in instance["service_filter"]:
         #print(sh_filter)
         sh_filter=instance["service_filter"]
         service_health_dict={}
+        
         for service_health in get_services_health(driver, sh_filter, delimiter):
             k,v = service_health.split(delimiter)
-            service_health_dict[k] = v
+            service_health_dict[format_key(k)] = v
+        
         env_health["services"] = service_health_dict
+        env_health["instance_details"]=get_instance_details(driver)
         health_check[env] = env_health
-            
+        
+
+        #get_instance_details(driver)
                 
     except KeyError:
         print("Missing Key")
         print(traceback.format_exc())
         sys.exit()
-print(health_check)
+        
+        
+pp = pprint.PrettyPrinter(indent=4)
+pp.pprint(health_check)
