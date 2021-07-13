@@ -116,45 +116,19 @@ def get_services_health(driver, tag="div.sc-gGuQiZ.fAXLLe", delimiter=","):
             #service=""
             #available=False
             if len(div) > 1:
-                #print("++++++++++++++++",div[0].find_elements_by_tag_name('span')[0].text)
+                
                 service=str(div[0].find_elements_by_tag_name('span')[0].text)
-                #print("++++++++++++++++",div[1].find_elements_by_tag_name('span')[0].find_elements_by_css_selector("use")[0].get_attribute('xlink:href'))
+                
                 status=div[1].find_elements_by_tag_name('span')[0].find_elements_by_css_selector("use")[0].get_attribute('xlink:href')
 
                 if '#healthy' in status:
-                    #print(service, "healthy")
+                    
                     row=service+str(delimiter)+ok_health
                 elif '#unhealthy' in status:
-                    #print(service, "unhealthy")
+                    
                     row=service+str(delimiter)+notok_health
                 service_status.append(row)   
-                #available=False
-                #for di, d in enumerate(div):
-                #    print("|  |--> di[",str(di),"]")
-                #    spans= d.find_elements_by_tag_name('span')
-                #    for si, s in enumerate(spans):
-                #        print("|  |  |--> si[",str(si),"]", str(s.text))
-                #        #print("divsi[", str(divsi)+"], di[",str(di),"], si[",str(si),"] span_s.text ----->", s.text)
-                #        hrefs = s.find_elements_by_css_selector("use")
-                #        #print("   |---->", str(s.tag_name), str(s.text) , str(hrefs.get_attribute('href')), str(hrefs.get_property('href')), str(hrefs.get_attribute('xlink:href')), str(hrefs.get_property('xlink:href')))
-                #        for hi, h in enumerate(hrefs):
-                #            if di == 0 and si == 0:
-                #                #print("|  |  |  |--> h[",str(hi),"]", s.text)
-                #                service=s.text
-                #                #print("h : --->", type(h), str(h.tag_name),str(h.get_attribute('href')), str(h.get_property('href')), str(h.get_attribute('xlink:href')), str(h.get_property('xlink:href')) )
-                #                #print("divsi[", str(divsi)+"], di[",str(di),"], si[",str(si),"], hi[",str(hi),"]  h href |----->", str(h.get_attribute('xlink:href')))
-                #            elif di ==1 and si == 0:
-                #                #print("|  |  |  |--> h[",str(hi),"]", s.text,str(h.get_attribute('xlink:href')))
-                #                if "#healthy" in str(h.get_attribute('xlink:href')):
-                #                    available=True
-                #                else:
-                #                    available=False
-                #                break
-                #print(service,available)               
-        
-                #print("~~~~~~~~~~~~~~~~~")
-                #print("|")
-
+                
     return service_status
 
 
