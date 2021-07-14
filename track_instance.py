@@ -13,202 +13,227 @@ from selenium.common.exceptions import TimeoutException
 
 import traceback
 
-env_check_list = ["DEV", "STG", "PROD"]
-env_check_list = ["DEV"]
-instances = { "DEV" :
-                    {
-                      "domain" : "https://status.salesforce.com",
-                      "uri_prefix" : "instances",
-                      "instance_name" : "CSXX",
-                      "uri_suffix" : "",
-                      "overall_health_filter": "div.sc-iueMJG.gNlGiH",
-                      "service_filter" : "div.sc-gGuQiZ.fAXLLe"
-                    },
-             "STG" :
-                    {
-                      "domain" : "https://status.salesforce.com",
-                      "uri_prefix" : "instances",
-                      "instance_name" : "CSXX",
-                      "uri_suffix" : "",
-                      "overall_health_filter": "div.sc-iueMJG.gNlGiH",
-                      "service_filter" : "div.sc-gGuQiZ.fAXLLe"
-                    },
-             "PROD" :
-                    {
-                      "domain" : "https://status.salesforce.com",
-                      "uri_prefix" : "instances",
-                      "instance_name" : "NAXXX",
-                      "uri_suffix" : "",
-                      "overall_health_filter": "div.sc-iueMJG.gNlGiH",
-                      "service_filter" : "div.sc-gGuQiZ.fAXLLe"
-                    }
 
-            }
+class SfHealth:
+    def __init__(self, env,instance_name, domain="status.salesforce.com", driver_type="chrome", driver_path="/Users/gsr/drivers/chromedriver"):
+        self.env=env
+        self.instance_name=instance_name
+        self.domain=domain
+        self.url=None
+ 
+        #Some hardcodes
+        self.uri_prefix="instances"
+        self.uri_suffix=""
+        self.overall_health_filter="div.sc-iueMJG.gNlGiH"
+        self.service_filter="div.sc-gGuQiZ.fAXLLe"
 
-def format_key(key_str):
-    return key_str.lower().strip().replace(' ', '_')
+        self.ok_health="OK"
+        self.notok_health="NOT-OK"
+        
+        self.instance_attr="[data-testid='instance-info']"
+        self.instance_meta=[ 'Version', 'Region', 'Maintenance Window' ]
+
+        self.delimiter=","
+        self.delay=10
 
 
-def initialize_chrome():
-    DRIVER_PATH='/Users/username/python_scripts/ark/drivers/chromedriver'
-    chrome_options = Options()
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('headless')
-    driver = webdriver.Chrome(options=chrome_options, executable_path=DRIVER_PATH)
-    #https://stackoverflow.com/a/34838339/14885821
-    
-    return driver
+        #Driver vars for Chrome
+        self.driver_path=driver_path
+        self.driver_type=driver_type
+        self.driver=None
+        self.driver_options=None
+        self.driver_option_args=['--no-sandbox', '--disable-dev-shm-usage', 'headless']
+
+        self.health_check={}
+
+        #Form the url to use
+        self.form_url()
+
+    #Format the key for dictionary
+    def format_key(self,key_str):
+        return key_str.lower().strip().replace(' ', '_')
+
+
+    #Initialize the driver for chrome 
+    def initialize_chrome_driver(self):
+        self.driver_options = Options()
+        for do_arg in self.driver_option_args:
+            self.driver_options.add_argument(do_arg)
+        self.driver = webdriver.Chrome(options=self.driver_options, executable_path=self.driver_path)
+        #https://stackoverflow.com/a/34838339/14885821
+        
+        self.driver.get(self.url) 
 
 
 
-def form_url(domain, instance_name, uri_prefix="", uri_suffix=""):
-    protocol=""
-    url_sep="/"
-    url=""
-    if "http://" not in domain and "https://" not in domain:
-        protocol="https://"
-    
-    
-    url=protocol+str(domain)
 
-    if uri_prefix != "":
-        url+=str(url_sep) + str(uri_prefix) + str(url_sep) + str(instance_name)
-    
-    if uri_suffix != "":
-        url+=str(url_sep) + str(uri_suffix)
-
-    return url
+    #Make the callable url from the variables
+    def form_url(self):
+        protocol=""
+        url_sep="/"
+        if "http://" not in self.domain and "https://" not in self.domain:
+            protocol="https://"
 
 
-    
-def get_chrome_driver(url):
-    driver = initialize_chrome()
-    driver.get(url)
-    return driver
+        self.url=protocol+str(self.domain)
+
+        if self.uri_prefix != "":
+            self.url+=str(url_sep) + str(self.uri_prefix) + str(url_sep) + str(self.instance_name)
+
+        if self.uri_suffix != "":
+            self.url+=str(url_sep) + str(self.uri_suffix)
 
 
-def get_overall_health(driver, tag="div.sc-iueMJG.gNlGiH", delimiter=","):
-    div_table = driver.find_element_by_css_selector(tag)
-    health_elements = div_table.find_elements_by_tag_name('span')
-    row=""
-    ok_health="HEALTHY"
-    notok_health="UNHEALTHY"
-    for span in health_elements:
-        if row == "":
-            row+=span.text
-        elif span.text == "Available" and ok_health not in row:
-            row+=delimiter+ok_health
-        elif span.text != "Available" and ok_health not in row:
-            row+=delimiter+notok_health
-
-    return row
+    #Get overall health of the instance
+    def get_overall_health(self):
+        tag=self.overall_health_filter
+        delimiter=self.delimiter
 
 
-def get_services_health(driver, tag="div.sc-gGuQiZ.fAXLLe", delimiter=","):
-    service_status=[]
-    ok_health="HEALTHY"
-    notok_health="UNHEALTHY"
-    div_table = driver.find_elements_by_css_selector(tag)
-    for div_elemi, div_element in enumerate(div_table):
-        #print(str(div_elemi))
-        div_elements = div_element.find_elements_by_tag_name('div')
+        div_table = self.driver.find_element_by_css_selector(tag)
+        health_elements = div_table.find_elements_by_tag_name('span')
         row=""
-        for divsi, divs in enumerate(div_elements):
-            div = divs.find_elements_by_tag_name('div')
-            #print("|--> divs[",str(divsi),"]")
-            #service=""
-            #available=False
-            if len(div) > 1:
-                
-                service=str(div[0].find_elements_by_tag_name('span')[0].text)
-                
-                status=div[1].find_elements_by_tag_name('span')[0].find_elements_by_css_selector("use")[0].get_attribute('xlink:href')
+        for span in health_elements:
+            if row == "":
+                row+=span.text
+            elif span.text == "Available" and self.ok_health not in row:
+                row+=delimiter+self.ok_health
+            elif span.text != "Available" and self.ok_health not in row:
+                row+=delimiter+self.notok_health
 
-                if '#healthy' in status:
-                    
-                    row=service+str(delimiter)+ok_health
-                elif '#unhealthy' in status:
-                    
-                    row=service+str(delimiter)+notok_health
-                service_status.append(row)   
-                
-    return service_status
+        return row
 
 
+    #Get instance services health
+    def get_services_health(self):
+        tag=self.service_filter
+        delimiter=self.delimiter
 
-#https://stackoverflow.com/a/26306203/14885821
-def get_instance_details(driver, tag="div", attr="[data-testid='instance-info']", delimiter=","):
-    wrapped_div = driver.find_elements_by_css_selector(tag+attr)
-    print(tag+attr)
-    print(len(wrapped_div))
-    instance_details = {}
-    vstr="Version" 
-    rstr="Region"
-    mstr="Maintenance Window"
-    for divsi, divs in enumerate(wrapped_div):
-        #print(divsi, type(divs), divs.get_attribute("data-testid"),"xx")
-       int_div=divs.find_elements_by_css_selector('div')
-       for idi, id in enumerate(int_div):
-           if vstr in id.text:
-               instance_details[format_key(vstr)]=id.text.replace(vstr, '').replace('\n', '').strip()
-           elif rstr in id.text:
-               instance_details[format_key(rstr)]=id.text.replace(rstr, '').replace('\n', '').strip()
-           elif mstr in id.text:
-               instance_details[format_key(mstr)]=id.text.replace(mstr, '').replace('Help', '').replace('\n', ' ').strip()
-           else:
-               continue
+        service_status=[]
+        div_table = self.driver.find_elements_by_css_selector(tag)
+        for div_elemi, div_element in enumerate(div_table):
+            #print(str(div_elemi))
+            div_elements = div_element.find_elements_by_tag_name('div')
+            row=""
+            for divsi, divs in enumerate(div_elements):
+                div = divs.find_elements_by_tag_name('div')
+                #print("|--> divs[",str(divsi),"]")
+                #service=""
+                #available=False
+                if len(div) > 1:
 
-    return instance_details
-                
+                    service=str(div[0].find_elements_by_tag_name('span')[0].text)
 
-health_check = {}
-delimiter=","
-delay=10
-for env in env_check_list:
-    try:
-        env_health = {}
-        instance = instances[env]
-        print(instance)
-        env_url=form_url(str(instance["domain"]), str(instance["instance_name"]), str(instance["uri_prefix"]), str(instance["uri_suffix"]))
-        #print(env_url)
-        env_health[format_key("URL")]=env_url
-        oh_filter = str(instance["overall_health_filter"])
-        #print(oh_filter)
-        driver = get_chrome_driver(env_url)
+                    status=div[1].find_elements_by_tag_name('span')[0].find_elements_by_css_selector("use")[0].get_attribute('xlink:href')
+
+                    if '#healthy' in status:
+
+                        row=service+str(delimiter)+self.ok_health
+                    elif '#unhealthy' in status:
+
+                        row=service+str(delimiter)+self.notok_health
+                    service_status.append(row)
+
+        return service_status
+
+
+
+    #Get instance meta data
+    #https://stackoverflow.com/a/26306203/14885821
+    def get_instance_details(self):
+        tag="div"
+        attr="[data-testid='instance-info']"
+        delimiter=self.delimiter
+
+        wrapped_div = self.driver.find_elements_by_css_selector(tag+attr)
+        #print(tag+attr)
+        #print(len(wrapped_div))
+        instance_details = {}
+        vstr="Version"
+        rstr="Region"
+        mstr="Maintenance Window"
+
+        #Email
+        #https://www.kite.com/python/answers/how-to-check-if-a-string-contains-an-element-from-a-list-in-python
+
+        for divsi, divs in enumerate(wrapped_div):
+           int_div=divs.find_elements_by_css_selector('div')
+           for idi, id in enumerate(int_div):
+               if vstr in id.text:
+                   instance_details[self.format_key(vstr)]=id.text.replace(vstr, '').replace('\n', '').strip()
+               elif rstr in id.text:
+                   instance_details[self.format_key(rstr)]=id.text.replace(rstr, '').replace('\n', '').strip()
+               elif mstr in id.text:
+                   instance_details[self.format_key(mstr)]=id.text.replace(mstr, '').replace('Help', '').replace('\n', ' ').strip()
+               else:
+                   continue
+
+        return instance_details
+
+
+
+    def perform_health_check(self):
+        delimiter=self.delimiter
+        delay=self.delay
+        env=self.env
+
+        #for env in env_check_list:
         try:
-            wait = WebDriverWait(driver, delay)
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, oh_filter)))
-        except TimeoutException:
-            print(env, ": Page Load Timeout")
-            continue
-        
-        koverall,val = get_overall_health(driver,oh_filter,delimiter ).split(delimiter)
-        
-        env_health[format_key(koverall)] = val
-        
-        #print(oh_filter)
-        #for sh_filter in instance["service_filter"]:
-        #print(sh_filter)
-        sh_filter=instance["service_filter"]
-        service_health_dict={}
-        
-        for service_health in get_services_health(driver, sh_filter, delimiter):
-            k,v = service_health.split(delimiter)
-            service_health_dict[format_key(k)] = v
-        
-        env_health["services"] = service_health_dict
-        env_health["instance_details"]=get_instance_details(driver)
-        health_check[env] = env_health
-        
+            env_health = {}
+            #instance = instances[env]
+            #print(instance)
+            #self.url=self.form_url(str(self.domain), str(self.instance_name), str(self.uri_prefix), str(self.uri_suffix))
+            #Store url in object
+            #self.form_url()
 
-        #get_instance_details(driver)
-                
-    except KeyError:
-        print("Missing Key")
-        print(traceback.format_exc())
-        sys.exit()
-        
-        
-pp = pprint.PrettyPrinter(indent=4)
-pp.pprint(health_check)
+            #print(env_url)
+            #env_health[self.format_key("URL")]=self.url
+            oh_filter = str(self.overall_health_filter)
+            #print(oh_filter)
+            
+            #Initalize chrome driver
+            self.initialize_chrome_driver()
+
+            try:
+                wait = WebDriverWait(self.driver, delay)
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, oh_filter)))
+            except TimeoutException:
+                print(env, ": Page Load Timeout")
+
+            koverall,val = self.get_overall_health().split(delimiter)
+
+            #koverall,val = "A","B"
+            env_health[self.format_key(koverall)] = val
+
+            #print(oh_filter)
+            #for sh_filter in instance["service_filter"]:
+            #print(sh_filter)
+            sh_filter=self.service_filter
+            service_health_dict={}
+
+            for service_health in self.get_services_health():
+                k,v = service_health.split(delimiter)
+                service_health_dict[self.format_key(k)] = v
+
+            env_health["services"] = service_health_dict
+            env_health["instance_details"]=self.get_instance_details()
+            self.health_check[env] = env_health
+
+
+            #get_instance_details(driver)
+
+        except KeyError:
+            print("Missing Key")
+            print(traceback.format_exc())
+            sys.exit()
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(self.health_check)
+        print("--------------------")
+        print(self.health_check)
+
+
+if __name__ == "__main__":
+    #(self, env,instance_name, domain="status.salesforce.com", driver_type="chrome", driver_path="/Users/g/drivers/chromedriver"):
+    sf=SfHealth("dev", "CSXX")
+    sf.perform_health_check()
+    
